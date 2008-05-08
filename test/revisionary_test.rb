@@ -10,5 +10,11 @@ class RevisionaryTest < Test::Unit::TestCase
   def teardown
     teardown_db
   end
+  
+  def test_instantiating_a_new_page
+    page = Page.create
+    part = page.parts.create
+    assert_equal [], page.commit_hash
+  end
 
 end
