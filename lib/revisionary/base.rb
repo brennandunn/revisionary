@@ -8,7 +8,6 @@ module Revisionary
         attr_accessor :revisionary_options
       end
       @revisionary_options = options
-      apply_revisionary_to_associations
     end
     
   end

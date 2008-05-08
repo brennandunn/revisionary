@@ -27,12 +27,13 @@ def setup_db
       
       t.string        :object_hash
       t.string        :source_hash
-      t.boolean       :head_version
+      t.boolean       :is_head
     end
     
     create_table :parts do |t|
       t.belongs_to    :page
       t.string        :name
+      t.text          :content
     end
 
   end
