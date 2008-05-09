@@ -32,7 +32,7 @@ In the Page definition, the `with` option accepts either an array or a single as
   
   @page.head?  # => true
 
-Modifications made to an association will committed atomically with the parent object if saved.
+Modifications made to an association will be committed atomically with the parent object if saved.
 
   @part.content = "Welcome to our website!"
   
