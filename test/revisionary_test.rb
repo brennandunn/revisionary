@@ -58,15 +58,38 @@ class RevisionaryTest < Test::Unit::TestCase
     assert_equal Page.find(:first).ancestry(:count => true), Page.find(:first).ancestry.size
   end
   
+  def test_commit_messages
+    page = Page.create :name => "Company Profile", :commit_message => "Initializing"
+    
+    page.name = "New Company Profile"
+    page.save :commit_message => "Changed name of page"
+    
+    assert_equal "Changed name of page", Page.find(:first).commit_message
+  end
+  
+  def test_tagging_of_commits
+    page = Page.create :name => "Company Profile"
+    
+    page.name = "New Company Profile"
+    page.save :tag => 'default_commit'
+    
+    assert_equal 'default_commit', page.tag
+  end
+  
   def test_checking_out_old_pages
     
     page = Page.create :name => "About Us"
     
+    page.name = "Beginner About Us"
+    page.save :tag => "beginner"
+    
     page.update_attribute :name, "A Newer About Us"
     page.update_attribute :name, "An Even Better About Us"
     
-    assert_equal "About Us", page.co('^^').name
+    assert_equal "About Us", page.co(3).name
     assert_equal "A Newer About Us", page.checkout(:previous).name
+    assert_equal "Beginner About Us", page.checkout("beginner").name
+    
     
     # TODO, if commit being saved was checked out and therefore has commits that are 'in front' of it, be sure to wipe them out
     

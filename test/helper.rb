@@ -29,6 +29,8 @@ def setup_db
       t.datetime      :object_created_at
       t.string        :source_hash
       t.integer       :branch_id
+      t.string        :commit_message
+      t.string        :commit_tag
       t.boolean       :is_head
     end
     

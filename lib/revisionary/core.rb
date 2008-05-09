@@ -11,7 +11,7 @@ module Revisionary
       end
       
       def clone_column?(col)
-        %w(id source_hash object_hash object_created_at is_head).include?(col)
+        self.skipped_revisionary_attributes.include?(col)
       end
       
       def find_with_commits(*args)
@@ -60,10 +60,19 @@ module Revisionary
         read_attribute(:source_hash) || self.commit_hash
       end
       
+      # access the tag (if exists)
+      def tag
+        self.commit_tag
+      end
+      
+      def tagged?
+        not self.tag.nil?
+      end
+      
       # revert to another version, again, thanks to Rich of acts_as_revisable!
       def revert_to!(pointer, options = {}) 
         
-        begin       
+        #begin       
           revision =  case pointer
                       when :previous, :last, '^'
                         ancestry.first
@@ -74,11 +83,13 @@ module Revisionary
                       when /\^(\d+)/        # ^3, ^15, whatever.
                         ancestry[$1.to_i]
                       when Fixnum
-                        ancestry[args.first]
+                        ancestry[pointer-1]
+                      when String
+                        ancestry.find { |a| !a.commit_tag.blank? && a.commit_tag.downcase == pointer.downcase }
                       end
-        rescue
-          revision = ancestry.last
-        end
+        # rescue
+        #   revision = ancestry.last
+        # end
         
         revision
       end
@@ -124,13 +135,19 @@ module Revisionary
       
         def save_with_commit(*args)
           @commit_parameters ||= args.extract_options!
+          trans_options = args.extract_options!
           @save_without_commit = true if @commit_parameters.delete :without_commit
+          @staged_commit_message = trans_options.delete(:commit_message)    # do this better
+          @staged_commit_tag = trans_options.delete(:tag)                   # *really* do this better...
           save_without_commit
         end
 
         def save_with_commit!(*args)
           @commit_parameters ||= args.extract_options!
+          trans_options = args.extract_options!
           @save_without_commit = true if @commit_parameters.delete :without_commit
+          @staged_commit_message = trans_options.delete(:commit_message)
+          @staged_commit_tag = trans_options.delete(:tag)
           save_without_commit!
         end
       
@@ -177,6 +194,8 @@ module Revisionary
         
         def commit
           if @commit_object and !@save_without_commit
+            @commit_object.commit_message = @staged_commit_message
+            @commit_object.commit_tag = @staged_commit_tag
             @commit_object.save
             self.clone_associations(@commit_object)
             self.reload_with(@commit_object)

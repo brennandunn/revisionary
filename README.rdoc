@@ -56,6 +56,10 @@ Revisionary will only save a snapshot if data has been altered.
   
   @page.ancestors.size  # => 2
   
+It is sometimes helpful to commit with a message
+
+  @page.save :commit_message => "Made some edits"
+  
 Not every save needs to be commited.
   
   @page.save :without_commit => true

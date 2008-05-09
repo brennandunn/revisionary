@@ -7,13 +7,17 @@ module Revisionary
         [self.revisionary_options[:with] || []].flatten
       end
       
+      def skipped_revisionary_attributes
+        %w(id source_hash object_hash object_created_at is_head commit_message commit_tag)
+      end
+      
     end
     
     module InstanceMethods
       
       # Generates unique hash for object and monitored associations
       def commit_hash
-        hash = self.attributes.reject { |k, v| [:id, :object_hash, :source_hash, :is_head, :object_created_at].include?(k.to_sym) }.values.join(':')
+        hash = self.attributes.reject { |k, v| self.class.skipped_revisionary_attributes.include?(k.to_s) }.values.join(':')
         array = associations(true).inject([]) do |arr, (key, assoc)|
           as = self.send(key)
           if as.is_a?(Array)
