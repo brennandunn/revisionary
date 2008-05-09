@@ -32,6 +32,8 @@ class RevisionaryTest < Test::Unit::TestCase
     page = Page.create :name => "Home Page"
     part = page.parts.create :name => "Body Part"
     
+    assert page.head?
+    
     page.name = "New Home Page"
     
     part.name = "New Body Part"

@@ -87,9 +87,14 @@ module Revisionary
         self.class.find(:first, :with_commits => true, :conditions => { :id => self.branch_id } )
       end
       
+      def head?
+        is_head?
+      end
+      
       protected
         def setup_source_object
           self.object_hash = self.commit_hash
+          self.is_head = true unless self.branch_id
           self.save :without_commit => true
         end
     

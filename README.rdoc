@@ -1,0 +1,61 @@
+= Revisionary
+
+== The Goal
+
+The goal of Revisionary is to bring over as much as I can from the world of SCM to ActiveRecord. There are a number of versioning plugins, but they're generally limited to the scope of an individual table (i.e. single model) and usually fall short when handling associations.
+
+acts_as_revisable was the premise of this plugin, and a lot of the concepts used in Revisionary are adopted from that project. I wanted to be able to drop the need for a second class, and also wanted to carry over a lot of things I love from git, such commit hashes as opposed to numeric versions. Most importantly, I needed to ability to atomically commit a model and any associations I want.
+
+
+== Theory
+
+acts_as_revisable brought branching and basic association cloning to ActiveRecord. What if you could create a record, some associations, and be able to commit that record and its associations without worrying about much? A page has many parts, if I modify attributes on the page and/or the parts, I want to be able to 'commit' the page and take a snapshot of the current attributes for all affiliated models. With Revisionary, this is now possible, and by intelligently hashing the content of both the parent record and associated records, saving (committing) only takes place if content changes.
+
+== Example
+
+  class Page < ActiveRecord::Base
+    has_many :parts
+    is_revisionary :with => :parts
+  end
+  
+  class Part < ActiveRecord::Base
+    belongs_to :page
+  end
+  
+In the Page definition, the `with` option accepts either an array or a single association. Now, any modifications to the parts association will be monitored by page records.
+
+  @page = Page.create :name => "Home Page"
+  @part = @page.parts.create :name => "Body", :content => "Welcome!"
+  
+  @page.head?  # => true
+
+Modifications made to an association will committed atomically with the parent object if saved.
+
+  @part.content = "Welcome to our website!"
+  
+  @page.save
+  
+  @page.ancestors.size  # => 1
+  
+A snapshot of that commit has been stored to the database, and updates made to either the parent or associations will be stored, again, atomically. No need to save your associations.
+
+Revisionary will only save a snapshot if data has been altered.
+
+  @page.ancestors.size  # => 1
+  
+  @page.save
+  
+  @page.ancestors.size  # => 1
+  
+  @page.name = "About Us"
+  
+  @page.save
+  
+  @page.ancestors.size  # => 2
+  
+  
+== No extra tables, just a few columns to one table
+
+Todo.
+
+Copyright (c) 2008 Brennan Dunn, released under the MIT license
