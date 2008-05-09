@@ -55,7 +55,21 @@ class RevisionaryTest < Test::Unit::TestCase
     page.save
      
     assert_equal Page.find(:first).root, Page.find(:first).ancestry.last
-    assert_equal Page.find(:first).ancestry.size, 4
+    assert_equal Page.find(:first).ancestry(:count => true), Page.find(:first).ancestry.size
+  end
+  
+  def test_checking_out_old_pages
+    
+    page = Page.create :name => "About Us"
+    
+    page.update_attribute :name, "A Newer About Us"
+    page.update_attribute :name, "An Even Better About Us"
+    
+    assert_equal "About Us", page.co('^^').name
+    assert_equal "A Newer About Us", page.checkout(:previous).name
+    
+    # TODO, if commit being saved was checked out and therefore has commits that are 'in front' of it, be sure to wipe them out
+    
   end
 
 end

@@ -21,6 +21,9 @@ acts_as_revisable brought branching and basic association cloning to ActiveRecor
   class Part < ActiveRecord::Base
     belongs_to :page
   end
+
+
+=== Commits
   
 In the Page definition, the `with` option accepts either an array or a single association. Now, any modifications to the parts association will be monitored by page records.
 
@@ -53,6 +56,43 @@ Revisionary will only save a snapshot if data has been altered.
   
   @page.ancestors.size  # => 2
   
+Not every save needs to be commited.
+  
+  @page.save :without_commit => true
+  
+
+=== Checkouts / Reverting
+
+Checking out older commits is extremely easy to do.
+
+  @page.checkout(:previous)   # Previous commit
+  
+  @page.checkout(:root)       # Base commit for branch
+  
+  @page.checkout('^^')        # 2 commits ago
+  
+  @page.checkout(6)           # 6 commits ago
+  
+This will return, not revert to, the requested commit.
+
+To forcefully revert, and risk the possibility of losing commits that were made after the reverted to version is committed with new data:
+
+  @page.revert_to!(:previous)
+  
+If saved with new data, the current head version will be destroyed and the reverted to version will become the head.
+
+How can we safely revert to a earlier version without destroying commits that happened after the commit being reverted to? Branching!
+
+
+=== Branching
+
+TODO
+
+
+=== Merging  
+  
+TODO
+
   
 == No extra tables, just a few columns to one table
 
