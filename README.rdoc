@@ -60,6 +60,10 @@ It is sometimes helpful to commit with a message
 
   @page.save :commit_message => "Made some edits"
   
+Not feelin' SHA1 hashes? Tag your commits.
+
+  @page.save :tag => "final-2"
+  
 Not every save needs to be commited.
   
   @page.save :without_commit => true
@@ -76,6 +80,8 @@ Checking out older commits is extremely easy to do.
   @page.checkout('^^')        # 2 commits ago
   
   @page.checkout(6)           # 6 commits ago
+  
+  @page.checkout("final-2")   # Revision tagged 'final-2'
   
 This will return, not revert to, the requested commit.
 
