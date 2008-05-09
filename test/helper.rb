@@ -26,7 +26,9 @@ def setup_db
       t.string        :name
       
       t.string        :object_hash
+      t.datetime      :object_created_at
       t.string        :source_hash
+      t.integer       :branch_id
       t.boolean       :is_head
     end
     

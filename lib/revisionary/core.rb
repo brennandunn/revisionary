@@ -5,12 +5,26 @@ module Revisionary
       
       def apply_revisionary_to_associations
         self.associations.each do |assoc|
-          self.reflect_on_association(:parts).klass.send(:include, Revisionary::Common)
+          [Revisionary::Common, Revisionary::Association].each { |m| self.reflect_on_association(assoc).klass.send(:include, m) }
+          self.reflect_on_association(assoc).klass.send(:register_owner, self)
         end
       end
       
       def clone_column?(col)
-        %w(id source_hash object_hash is_head).include?(col)
+        %w(id source_hash object_hash object_created_at is_head).include?(col)
+      end
+      
+      def find_with_commits(*args)
+        options = args.grep(Hash).first
+        
+        if options && options.delete(:with_commits)
+          without_model_scope do
+            find_without_commits(*args)
+          end
+        else
+          find_without_commits(*args)
+        end
+        
       end
       
     end
@@ -36,7 +50,10 @@ module Revisionary
       
       def to_commit
         rev = self.clone
+        rev.branch_id = self.branch_id || self.id
         rev.source_hash = self.object_hash
+        rev.object_created_at = Time.now + 1.second
+        rev.is_head = true
         
         self.class.column_names.each do |col|
           next if self.class.clone_column?(col)
@@ -47,20 +64,56 @@ module Revisionary
         rev
       end
       
-      private
+      def clone_associations(receiver)
+        self.associations(true).each do |key, object|
+          if object.is_a?(Array)
+            object.map { |o| n = o.clone; n.set_owner(receiver); n.save; n }
+          else
+            n = object.clone
+            n.set_owner(receiver)
+            n.save
+            n
+          end
+        end
+      end
+      
+      def ancestry(depth = nil)
+        options = { :with_commits => true, :conditions => ["is_head = ? and (branch_id = ? or id = ?)", false, self.branch_id, self.branch_id], :order => 'object_created_at desc, id desc' }
+        options.merge!({ :limit => depth}) if depth
+        self.class.find(:all, options)
+      end
+      
+      def root
+        self.class.find(:first, :with_commits => true, :conditions => { :id => self.branch_id } )
+      end
+      
+      protected
         def setup_source_object
           self.object_hash = self.commit_hash
+          self.save :without_commit => true
         end
     
         def prepare_to_commit
           return if self[:object_hash] == self.commit_hash
+          self.is_head = false
           @commit_object = self.to_commit
         end
         
         def commit
-          if @commit_object
+          if @commit_object and !@save_without_commit
             @commit_object.save
+            self.clone_associations(@commit_object)
+            self.reload_with(@commit_object)
+            @commit_object = nil
+            @save_without_commit = nil
+            setup_source_object
           end
+        end
+        
+        def reload_with(object)
+          @attributes.update(object.attributes)
+          @attributes_cache = {}
+          self
         end
       
     end
@@ -69,12 +122,19 @@ module Revisionary
       receiver.send :include, Revisionary::Common
       receiver.extend         ClassMethods
       receiver.send :include, InstanceMethods
+      
+      class << receiver
+        alias_method_chain :find, :commits
+      end
+      
       receiver.instance_eval do
         
         alias_method_chain :save, :commit
         alias_method_chain :save!, :commit
         
-        before_create :setup_source_object
+        acts_as_scoped_model :find => { :conditions => { :is_head => true } } 
+                
+        after_create :setup_source_object
         before_update :prepare_to_commit
         after_update :commit
         

@@ -13,9 +13,14 @@ module Revisionary
       
       # Generates unique hash for object and monitored associations
       def commit_hash
-        hash = self.attributes.reject { |k, v| [:object_hash, :source_hash, :is_head].include?(k.to_sym) }.values.join(':')
+        hash = self.attributes.reject { |k, v| [:id, :object_hash, :source_hash, :is_head, :object_created_at].include?(k.to_sym) }.values.join(':')
         array = associations(true).inject([]) do |arr, (key, assoc)|
-          arr << (assoc.is_a?(Array) ? assoc.map(&:commit_hash) : assoc.commit_hash)
+          as = self.send(key)
+          if as.is_a?(Array)
+            as.map { |o| o.attributes.reject { |k, v| [:id, :page_id].include?(k.to_sym ) }.values.join(':') }.join(':')
+          else
+            # TODO
+          end
         end
         Digest::SHA1.hexdigest([hash, array].flatten.join(':'))
       end

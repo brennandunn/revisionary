@@ -15,11 +15,11 @@ class RevisionaryTest < Test::Unit::TestCase
     page = Page.create
     part = page.parts.create
     
-    assert_equal "e8db9bd1e4a8ca364d45dfc49eb8e7b04bf2b431", page.commit_hash  # this an empty page with one page part
+    assert_equal "15856dc487f63392ad9343a5a7e4e0f5fb32b295", page.commit_hash  # this an empty page with one page part
     
     page.parts.first.name = "Testing"
     
-    assert_equal "339273857f8d3c37c28aea845faf08c2a8f19c0f", page.commit_hash  # this an empty page with one page part set to 'testing'
+    assert_equal "8294b7d302d14b7501144eea388852d16e5fba98", page.commit_hash  # this an empty page with one page part set to 'testing'
   end
   
   def test_that_source_object_knows_itself
@@ -28,15 +28,32 @@ class RevisionaryTest < Test::Unit::TestCase
     assert_equal page.commit_hash, page.source_hash
   end
   
-  def test_saving_a_page
+  def test_saving_a_page_and_skipping_equal_commit_hashes
     page = Page.create :name => "Home Page"
     part = page.parts.create :name => "Body Part"
     
-    page.update_attribute :name, "New Home Page"
+    page.name = "New Home Page"
     
-    part.update_attribute :name, "New Body Part"
+    part.name = "New Body Part"
         
-    assert_equal [], [Page.find(:all), Part.find(:all)]
+    page.save   # ensure that saving a revisionary model also accounts for watched associations
+    
+    part.name = "Hello from Page Part"
+    
+    page.save
+    page.save   # test that saving unmodified content does nothing   
+    page.save
+    
+    page.name = "Hello from Page"
+    
+    page.save
+    
+    part.name = "Are we done yet?"
+    
+    page.save
+     
+    assert_equal Page.find(:first).root, Page.find(:first).ancestry.last
+    assert_equal Page.find(:first).ancestry.size, 4
   end
 
 end
