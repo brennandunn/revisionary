@@ -15,11 +15,11 @@ class RevisionaryTest < Test::Unit::TestCase
     page = Page.create
     part = page.parts.create
     
-    assert_equal "15856dc487f63392ad9343a5a7e4e0f5fb32b295", page.commit_hash  # this an empty page with one page part
+    assert_equal "f62e0ea6edbc4288ff84c8da24f410ecf986229d", page.commit_hash  # this an empty page with one page part
     
     page.parts.first.name = "Testing"
     
-    assert_equal "8294b7d302d14b7501144eea388852d16e5fba98", page.commit_hash  # this an empty page with one page part set to 'testing'
+    assert_equal "e122f9073ed0e1ebfb7ca779a8977944374b21c4", page.commit_hash  # this an empty page with one page part set to 'testing'
   end
   
   def test_that_source_object_knows_itself
@@ -102,9 +102,8 @@ class RevisionaryTest < Test::Unit::TestCase
     page.save
     
     page.revert_to!(:root)
-    #assert_equal [], page.revert_to!(:root)
-        
-    assert_equal [], [Page.find(:all, :with_commits => true), Part.find(:all)]
+    
+    assert_equal Page.find(:first).checkout(:root).name, Page.find(:first).name        
   end
 
 end
