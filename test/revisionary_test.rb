@@ -89,10 +89,22 @@ class RevisionaryTest < Test::Unit::TestCase
     assert_equal "About Us", page.co(3).name
     assert_equal "A Newer About Us", page.checkout(:previous).name
     assert_equal "Beginner About Us", page.checkout("beginner").name
+        
+  end
+  
+  def test_reverting
     
+    page = Page.create :name => "About Us"
+    part = page.parts.create :name => "Test"
     
-    # TODO, if commit being saved was checked out and therefore has commits that are 'in front' of it, be sure to wipe them out
+    page.name = "New About Us"
+    part.name = "New Test"
+    page.save
     
+    page.revert_to!(:root)
+    #assert_equal [], page.revert_to!(:root)
+        
+    assert_equal [], [Page.find(:all, :with_commits => true), Part.find(:all)]
   end
 
 end

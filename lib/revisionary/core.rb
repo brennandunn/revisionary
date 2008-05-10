@@ -65,6 +65,7 @@ module Revisionary
         self.commit_tag
       end
       
+      # check to see if current is tagged
       def tagged?
         not self.tag.nil?
       end
@@ -72,7 +73,7 @@ module Revisionary
       # revert to another version, again, thanks to Rich of acts_as_revisable!
       def revert_to!(pointer, options = {}) 
         
-        #begin       
+        begin       
           revision =  case pointer
                       when :previous, :last, '^'
                         ancestry.first
@@ -87,11 +88,16 @@ module Revisionary
                       when String
                         ancestry.find { |a| !a.commit_tag.blank? && a.commit_tag.downcase == pointer.downcase }
                       end
-        # rescue
-        #   revision = ancestry.last
-        # end
+        rescue
+          revision = ancestry.last
+        end
         
-        revision
+        if options[:soft]
+          revision
+        else
+          self.reload_with(revision, :skip_protected => true)
+          self.save
+        end
       end
       alias :checkout! :revert_to!
       
@@ -154,6 +160,7 @@ module Revisionary
         def setup_source_object
           self.object_hash = self.commit_hash
           self.is_head = true unless self.branch_id
+          self.object_created_at = Time.now + 1.second
           self.save :without_commit => true
         end
         
@@ -174,7 +181,6 @@ module Revisionary
           rev = self.clone
           rev.branch_id = self.branch_id || self.id
           rev.source_hash = self.object_hash
-          rev.object_created_at = Time.now + 1.second
           rev.is_head = true
 
           self.class.column_names.each do |col|
@@ -205,8 +211,10 @@ module Revisionary
           end
         end
         
-        def reload_with(object)
-          @attributes.update(object.attributes)
+        def reload_with(object, options = {})
+          attributes = object.attributes
+          attributes.reject! { |k, v| self.class.skipped_revisionary_attributes.include?(k) } if options[:skip_protected]
+          @attributes.update(attributes)
           @attributes_cache = {}
           self
         end

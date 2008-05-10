@@ -8,7 +8,7 @@ module Revisionary
       end
       
       def skipped_revisionary_attributes
-        %w(id source_hash object_hash object_created_at is_head commit_message commit_tag)
+        %w(id source_hash object_hash object_created_at branch_id is_head commit_message commit_tag)
       end
       
     end
