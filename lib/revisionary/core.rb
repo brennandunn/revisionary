@@ -14,6 +14,10 @@ module Revisionary
         self.skipped_revisionary_attributes.include?(col)
       end
       
+      def find_by_branch(id)
+        self.find_by_branch_id(id)
+      end
+      
       def find_with_commits(*args)
         options = args.grep(Hash).first
         
@@ -143,6 +147,7 @@ module Revisionary
           @commit_parameters ||= args.extract_options!
           trans_options = args.extract_options!
           @save_without_commit = true if @commit_parameters.delete :without_commit
+          @branch = trans_options.delete(:branch)
           @staged_commit_message = trans_options.delete(:commit_message)    # do this better
           @staged_commit_tag = trans_options.delete(:tag)                   # *really* do this better...
           save_without_commit
@@ -152,6 +157,7 @@ module Revisionary
           @commit_parameters ||= args.extract_options!
           trans_options = args.extract_options!
           @save_without_commit = true if @commit_parameters.delete :without_commit
+          @branch = trans_options.delete(:branch)
           @staged_commit_message = trans_options.delete(:commit_message)
           @staged_commit_tag = trans_options.delete(:tag)
           save_without_commit!
@@ -177,9 +183,15 @@ module Revisionary
           end
         end
         
+        def prepare_to_commit
+          return if self[:object_hash] == self.commit_hash and !@branch
+          self.is_head = false
+          @commit_object = self.to_commit
+        end
+        
         def to_commit
           rev = self.clone
-          rev.branch_id = self.branch_id || self.id
+          rev.branch_id ||= @branch ? self.id : self.branch_id || self.id
           rev.source_hash = self.object_hash
           rev.is_head = true
 
@@ -191,12 +203,6 @@ module Revisionary
 
           rev
         end
-    
-        def prepare_to_commit
-          return if self[:object_hash] == self.commit_hash
-          self.is_head = false
-          @commit_object = self.to_commit
-        end
         
         def commit
           if @commit_object and !@save_without_commit
@@ -207,6 +213,7 @@ module Revisionary
             self.reload_with(@commit_object)
             @commit_object = nil
             @save_without_commit = nil
+            @branch = nil
             setup_source_object
           end
         end

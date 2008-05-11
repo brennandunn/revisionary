@@ -103,7 +103,24 @@ class RevisionaryTest < Test::Unit::TestCase
     
     page.revert_to!(:root)
     
-    assert_equal Page.find(:first).checkout(:root).name, Page.find(:first).name        
+    assert_equal Page.find(:first).checkout(:root).name, Page.find(:first).name
+
+  end
+
+  def test_multiple
+    
+    home = Page.create :name => "Home"
+    about = Page.create :name => "About Us"
+    
+    home.name = "Home Page"
+    home.save :commit_message => "Better title"
+    
+    home.name = "Welcome to our company!"
+    home.save
+    
+    assert_equal home, Page.find_by_branch(1)
+    assert_equal about, Page.find_by_name("About Us")    
+    
   end
 
 end

@@ -103,21 +103,13 @@ Checking out older commits is extremely easy to do.
   
 This will return, not revert to, the requested commit.
 
-To forcefully revert, and risk the possibility of losing commits that were made after the reverted to version is committed with new data:
+To add a previous version to the head, you can quickly revert to any commit:
 
   @page.revert_to!(:previous)
-  
-If saved with new data, the current head version will be destroyed and the reverted to version will become the head.
 
-How can we safely revert to a earlier version without destroying commits that happened after the commit being reverted to? Branching!
+Branching has been removed for now. I don't see many practical uses in the project that this is being developed for, but perhaps this can be reintroduced at a later time? 
 
-
-=== Branching
-
-TODO
-
-
-=== Merging  
+=== Diffing / Merging 
   
 TODO
 
