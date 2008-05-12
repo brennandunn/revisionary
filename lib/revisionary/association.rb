@@ -2,8 +2,9 @@ module Revisionary
   module Association
     module ClassMethods
       
-      def register_owner(owner)
+      def register_owner(owner, polymorphic_assoc = nil)
         @revisionary_owner = owner
+        @revisionary_polymorphic = polymorphic_assoc
       end
       
     end
@@ -11,8 +12,8 @@ module Revisionary
     module InstanceMethods
       
       def set_owner(owner)
-        assoc = self.class.reflect_on_all_associations.find { |a| a.klass == owner.class }
-        send("#{assoc.name}=", owner)
+        assoc = self.class.reflect_on_all_associations.find { |a| a.klass == owner.class } rescue nil
+        send(assoc ? "#{assoc.name}=" : "#{self.class.revisionary_polymorphic}=", owner)
       end
       
     end
@@ -25,6 +26,7 @@ module Revisionary
         class << receiver
           
           attr_accessor :revisionary_owner
+          attr_accessor :revisionary_polymorphic
           
         end
         

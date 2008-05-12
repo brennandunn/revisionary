@@ -6,7 +6,7 @@ module Revisionary
       def apply_revisionary_to_associations
         self.associations.each do |assoc|
           [Revisionary::Common, Revisionary::Association].each { |m| self.reflect_on_association(assoc).klass.send(:include, m) }
-          self.reflect_on_association(assoc).klass.send(:register_owner, self)
+          self.reflect_on_association(assoc).klass.send(:register_owner, self, self.reflect_on_association(assoc).options[:as])
         end
       end
       
