@@ -14,8 +14,8 @@ module Revisionary
         self.skipped_revisionary_attributes.include?(col)
       end
       
-      def find_by_branch(id)
-        self.find_by_branch_id(id)
+      def find_by_branch(*args)
+        self.find_by_branch_id(args.first)
       end
       
       def find_with_commits(*args)
@@ -89,8 +89,10 @@ module Revisionary
                         ancestry[$1.to_i]
                       when Fixnum
                         ancestry[pointer-1]
+                      when /tag:(.*)/
+                        ancestry.find { |a| !a.commit_tag.blank? && a.commit_tag.downcase == $1.downcase }
                       when String
-                        ancestry.find { |a| !a.commit_tag.blank? && a.commit_tag.downcase == pointer.downcase }
+                        ancestry.find { |a| a.object_hash[pointer] }
                       end
         rescue
           revision = ancestry.last

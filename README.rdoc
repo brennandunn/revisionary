@@ -91,15 +91,18 @@ Not every save needs to be commited.
 
 Checking out older commits is extremely easy to do.
 
-  @page.checkout(:previous)   # Previous commit
+  @page.checkout(:previous)       # Previous commit
   
-  @page.checkout(:root)       # Base commit for branch
+  @page.checkout(:root)           # Base commit for branch
   
-  @page.checkout('^^')        # 2 commits ago
+  @page.checkout('^^')            # 2 commits ago
   
-  @page.checkout(6)           # 6 commits ago
+  @page.checkout(6)               # 6 commits ago
   
-  @page.checkout("final-2")   # Revision tagged 'final-2'
+  @page.checkout("tag:final-2")   # Revision tagged 'final-2'
+  
+  @page.checkout("f62e0ea")       # Like in git, you only need enough of a commit hash to guarantee uniqueness
+  
   
 This will return, not revert to, the requested commit.
 
