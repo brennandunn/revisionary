@@ -121,4 +121,8 @@ TODO
 
 Todo.
 
+== Credits
+
+Many thanks go to Rich Cavanaugh, the author of acts_as_revisable. Not only was his project my inspiration in creating Revisionary, but his acts_as_scoped_model and other code samples propelled me to finish most of this plugin while on a plane.
+
 Copyright (c) 2008 Brennan Dunn, released under the MIT license
