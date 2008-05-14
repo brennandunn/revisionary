@@ -119,7 +119,11 @@ TODO
   
 == No extra tables, just a few columns to one table
 
-Todo.
+TODO
+
+== Requirements
+
+Revisionary will only work under Rails Edge, or anything tagged >= 2.1
 
 == Credits
 
