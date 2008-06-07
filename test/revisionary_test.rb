@@ -11,116 +11,181 @@ class RevisionaryTest < Test::Unit::TestCase
     teardown_db
   end
   
-  def test_instantiating_a_new_page_with_association
-    page = Page.create
-    part = page.parts.create
-    
-    assert_equal "f62e0ea6edbc4288ff84c8da24f410ecf986229d", page.commit_hash  # this an empty page with one page part
-    
-    page.parts.first.name = "Testing"
-    
-    assert_equal "e122f9073ed0e1ebfb7ca779a8977944374b21c4", page.commit_hash  # this an empty page with one page part set to 'testing'
+  def test_for_monitored_associations
+    assert_equal(Page.associations, [:parts])
   end
   
-  def test_that_source_object_knows_itself
-    page = Page.create
+  def test_for_hash_equality
+    page = new_page
+    page.commit! do |p|
+      p.parts.create :name => 'Body'
+    end
     
-    assert_equal page.commit_hash, page.source_hash
+    assert_equal(page.commit_hash, page.object_hash)
   end
   
-  def test_saving_a_page_and_skipping_equal_commit_hashes
-    page = Page.create :name => "Home Page"
-    part = page.parts.create :name => "Body Part"
+  def test_for_consitent_ids
+    page = create_page
+    page_id = page.id
     
-    assert page.head?
+    page.commit! { |p| p.name = 'One' }
+    page.commit! { |p| p.name = 'Two' }
+    page.commit! { |p| p.name = 'Three' }
     
-    page.name = "New Home Page"
-    
-    part.name = "New Body Part"
+    assert_equal(page_id, page.id)
+  end
+
+  def test_for_modifications_in_a_commit_block
+    page = create_page
+    page.commit! do |p|
+      p.name = "Welcome to our website"
+    end
         
-    page.save   # ensure that saving a revisionary model also accounts for watched associations
+    page.commit! do |p|
+      p.name = "Google Inc"
+    end    
     
-    part.name = "Hello from Page Part"
-    
-    page.save
-    page.save   # test that saving unmodified content does nothing   
-    page.save
-    
-    page.name = "Hello from Page"
-    
-    page.save
-    
-    part.name = "Are we done yet?"
-    
-    page.save
-     
-    assert_equal Page.find(:first).root, Page.find(:first).ancestry.last
-    assert_equal Page.find(:first).ancestry(:count => true), Page.find(:first).ancestry.size
+    assert_equal(Page.find(:first).commits_count, 2)
+    assert_equal(Page.find(:first).name, page.name)
   end
   
-  def test_commit_messages
-    page = Page.create :name => "Company Profile", :commit_message => "Initializing"
+  def test_cloning_of_associations
+    page = new_page
+    page.commit! do |p|
+      p.parts.create :name => 'Body'
+      p.parts.create :name => 'Sidebar'
+    end
     
-    page.name = "New Company Profile"
-    page.save :commit_message => "Changed name of page"
+    page.commit! do |p|
+      p.parts.first.name = 'Body Area'
+      p.name = 'Google Inc'
+    end
     
-    assert_equal "Changed name of page", Page.find(:first).commit_message
+    page.commit! do |p|
+      p.parts.last.name = 'My area'
+    end
+    
+    assert_equal(6, Part.count)
   end
   
-  def test_tagging_of_commits
-    page = Page.create :name => "Company Profile"
+  def test_ignoring_commiting_duplicates
+    page = new_page
+    page.commit!
+    page.commit! # nothing has changed, this will be ignored
+    page.commit! do |p|
+      page.name = 'Testing name change'
+    end
     
-    page.name = "New Company Profile"
-    page.save :tag => 'default_commit'
-    
-    assert_equal 'default_commit', page.tag
+    assert_equal(1, page.commits_count)
   end
   
-  def test_checking_out_old_pages
+  def test_querying_for_previous_commits
+    page = create_page :name => 'Previous Commit'
+    page.commit! { |p| p.name = 'Current Commit' }
     
-    page = Page.create :name => "About Us"
-    
-    page.name = "Beginner About Us"
-    page.save :tag => "beginner"
-    
-    page.update_attribute :name, "A Newer About Us"
-    page.update_attribute :name, "An Even Better About Us"
-    
-    assert_equal "About Us", page.co(3).name
-    assert_equal "A Newer About Us", page.checkout(:previous).name
-    assert_equal "Beginner About Us", page.checkout("beginner").name
-        
+    assert_equal('Previous Commit', page.checkout(:previous).name)
+    assert_equal(page.checkout(:previous), page.checkout(:root))
+    assert_equal(page.checkout(:previous), page.checkout(1))
+    assert_equal(page.checkout(:root), page.checkout(10)) # obviously there aren't 10 commits
   end
   
-  def test_reverting
+  def test_reverting_a_previous_commit
+    page = create_page :name => 'Previous Commit'
+    page.commit! { |p| p.name = 'Current Commit' }
+    page.revert_to!(:previous)
     
-    page = Page.create :name => "About Us"
-    part = page.parts.create :name => "Test"
+    assert_equal(page.object_hash, page.checkout(:root).object_hash)
+  end
+  
+  def test_reverting_a_previous_commit_with_associations
+    page = new_page :name => 'Previous Commit'
+    page.commit! do |p|
+      p.parts.create :name => 'Body'
+      p.parts.create :name => 'Sidebar'
+    end
     
-    page.name = "New About Us"
-    part.name = "New Test"
-    page.save
+    page.commit! do |p|
+      p.name = 'Current Commit'
+      p.parts.first.name = 'New Body'
+      p.parts.last.name = 'New Sidebar'
+    end
+    
+    page.commit! do |p|
+      p.name = 'Final Commit'
+      p.parts.first.name = 'Final Body'
+      p.parts.last.name = 'Final Sidebar'
+    end
+    
+    page.revert_to!(:previous)
+    
+    assert_equal('Current Commit', page.name)
     
     page.revert_to!(:root)
     
-    assert_equal Page.find(:first).checkout(:root).name, Page.find(:first).name
-
+    assert_equal('Previous Commit', page.name)
   end
-
-  def test_multiple
+  
+  def test_ignored_attributes
+    page = create_page :name => 'Home Page'
     
-    home = Page.create :name => "Home"
-    about = Page.create :name => "About Us"
+    page.set_live! # this is a method outside of Revisionary included in the Page class defined in helper.rb
     
-    home.name = "Home Page"
-    home.save :commit_message => "Better title"
+    page.commit! do |p|
+      p.name = 'My Home Page'
+    end
     
-    home.name = "Welcome to our company!"
-    home.save
+    page.commit! do |p|
+      p.name = 'Google Inc.'
+    end
     
-    assert_equal home, Page.find_by_branch(1)
-    assert_equal about, Page.find_by_name("About Us")    
+    page.update_attribute :live_hash, page.object_hash
     
+    assert_nil page.checkout(:previous).live_hash
+    assert page.live_hash
+  end
+  
+  def test_query_for_live_page_by_live_hash
+    # if you intend on having a live, approved version of a record in comparison to the head, this is useful
+    page = create_page :name => 'Home Page'
+    
+    page.set_live!
+    
+    page.commit! { |p| p.name = 'Welcome Page' } # this is not approved
+    
+    assert_equal('Welcome Page', page.name)
+    assert_equal('Home Page', page.checkout(page.live_hash).name)
+    
+  end
+  
+  # def test_commit_messages
+  #   page = new_page
+  #   page.commit! :message => 'Made some changes' do |p|
+  #     p.name = 'Google Inc'
+  #   end
+  #   
+  #   assert_equal('Made some changes', page.commit_message)
+  # end
+  # 
+  # def test_tagging
+  #   page = create_page
+  #   page.commit! :tag => 'final' do |p|
+  #     p.name = 'Final Commit'
+  #   end
+  #   
+  #   page.commit! { |p| p.name = 'Maybe not' }
+  #   
+  #   assert_equal(Page.find(:all, :with_commits => true), [])
+  #   assert_equal('Final Commit', page.checkout('tag:final').name)
+  # end
+  
+  def new_page(options = {})
+    Page.new({:name => "Home Page"}.merge(options))
+  end
+  
+  def create_page(options = {})
+    page = new_page(options)
+    page.save
+    page
   end
 
 end

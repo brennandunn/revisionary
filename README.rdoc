@@ -94,9 +94,7 @@ Checking out older commits is extremely easy to do.
   @page.checkout(:previous)       # Previous commit
   
   @page.checkout(:root)           # Base commit for branch
-  
-  @page.checkout('^^')            # 2 commits ago
-  
+    
   @page.checkout(6)               # 6 commits ago
   
   @page.checkout("tag:final-2")   # Revision tagged 'final-2'

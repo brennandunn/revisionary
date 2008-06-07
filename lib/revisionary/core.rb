@@ -1,38 +1,48 @@
 module Revisionary
   module Core
     
+    def self.included(receiver)
+      receiver.extend         ClassMethods
+      receiver.send :include, InstanceMethods
+      
+      class << receiver
+        alias_method_chain :find, :commits
+        alias_method_chain :count, :commits
+      end
+      
+      receiver.instance_eval do
+        
+        alias_method_chain :save, :commit
+        alias_method_chain :save!, :commit
+        
+        # this will ensure that we only ever find the actual object, not the commits
+        acts_as_scoped_model :find => { :conditions => { :original_commit_id => nil } }
+                
+        before_save :setup_commit
+        before_update :clone_previous
+        after_update :save_commit
+        
+        attr_accessor :revisionary_commit_tag
+        
+      end
+      
+    end
+    
     module ClassMethods
-      
-      def apply_revisionary_to_associations
-        self.associations.each do |assoc|
-          [Revisionary::Common, Revisionary::Association].each { |m| self.reflect_on_association(assoc).klass.send(:include, m) }
-          self.reflect_on_association(assoc).klass.send(:register_owner, self, self.reflect_on_association(assoc).options[:as])
-        end
-      end
-      
-      def clone_column?(col)
-        self.skipped_revisionary_attributes.include?(col)
-      end
-      
-      def find_by_branch(*args)
-        self.find_by_branch_id(args.first)
-      end
       
       def find_with_commits(*args)
         options = args.grep(Hash).first
-        
         if options && options.delete(:with_commits)
           without_model_scope do
             find_without_commits(*args)
           end
         else
-          find_without_commits(*args)
-        end  
+          find_without_commits(*args)          
+        end
       end
       
       def count_with_commits(*args)
         options = args.grep(Hash).first
-        
         if options && options.delete(:with_commits)
           without_model_scope do
             count_without_commits(*args)
@@ -42,217 +52,149 @@ module Revisionary
         end
       end
       
-      def with_scope_with_commits(*args, &block)
-        options = args.grep(Hash).first[:find]
-        
-        if options && options.delete(:with_commits)
-          without_model_scope do
-            with_scope_without_commits(*args, &block)
-          end
-        else
-          with_scope_without_commits(*args, &block)
-        end
-      end
-      
-      
     end
     
     module InstanceMethods
       
-      # access the source object
-      def source_hash
-        read_attribute(:source_hash) || self.commit_hash
+      def commits(conditions = {})
+        scope, count = conditions.delete(:scope), conditions.delete(:count)
+        options = { :conditions => { :original_commit_id => self.id }.merge(conditions), :order => 'commit_created_at desc, id desc', :with_commits => true }
+        count ? self.class.count(options) : self.class.find(scope || :all, options)
       end
       
-      # access the tag (if exists)
-      def tag
-        self.commit_tag
+      def commits_count
+        commits(:count => true)
       end
       
-      # check to see if current is tagged
-      def tagged?
-        not self.tag.nil?
-      end
-      
-      # revert to another version, again, thanks to Rich of acts_as_revisable!
-      def revert_to!(pointer, options = {}) 
-        
-        begin       
+      def revert_to!(pointer, options = {})
+        begin
           revision =  case pointer
-                      when :previous, :last, '^'
-                        ancestry.first
+                      when :previous
+                        commits(:scope => :first)
                       when :root
-                        ancestry.last
-                      when '^^', '^2'
-                        ancestry[1]
-                      when /\^(\d+)/        # ^3, ^15, whatever.
-                        ancestry[$1.to_i]
+                        commits(:scope => :last)
                       when Fixnum
-                        ancestry[pointer-1]
+                        commits[pointer-1] || commits(:scope => :last)
                       when /tag:(.*)/
-                        ancestry.find { |a| !a.commit_tag.blank? && a.commit_tag.downcase == $1.downcase }
+                        commits(:scope => :first, :commit_tag => $1)
                       when String
-                        ancestry.find { |a| a.object_hash[pointer] }
+                        commits(:scope => :first, :object_hash => pointer)
                       end
         rescue
-          revision = ancestry.last
+           revision = commits(:scope => :last)
         end
+        
+        revision ||= commits(:scope => :first)
         
         if options[:soft]
           revision
         else
-          self.reload_with(revision, :skip_protected => true)
-          self.save
+          @transitory_revision = revision
+          self.commit! do |s| 
+            s.attributes = revision.cloneable_attributes
+          end
+          @transitory_revision = nil
+          self
         end
       end
-      alias :checkout! :revert_to!
       
-      # this will just return the desired object, rather than forcefully reverting to it
       def checkout(pointer, options = {})
         self.revert_to!(pointer, options.merge({ :soft => true }))
       end
-      alias :co :checkout
-      alias :revert_to :checkout
       
-      # an array of former commits ending at the base of the branch
-      def ancestry(*args)
-        params = args.extract_options!
-        options = { :with_commits => true, :conditions => ["is_head = :head and (branch_id = :branch_id or id = :branch_id)", { :head => false, :branch_id => self.branch_id }], :order => 'object_created_at desc, id desc' }
+      def commit(options = {}, &block)
+        return unless block_given?
         
-        if params[:count]
-          self.class.count(options)
-        else
-          options.merge!({ :limit => params[:depth]}) if params[:depth]
-          self.class.find(:all, options)
+        begin
+          commit_mutex(:start)
+          if self.new_record?
+            @stepping_out_of_commit = true
+            self.save
+          end
+          yield(self)
+          self.commit_message = options[:message]
+        ensure
+          commit_mutex(:stop)
+        end
+        
+      end
+      
+      def commit!(options = {}, &block)
+        returning(commit(options, &block)) do
+          save!
         end
       end
-      alias :ancestors :ancestry
       
-      # helper for calling ancestry count
-      def count_since_branch
-        self.ancestry(:count => true)
-      end
-      
-      # find the root of the current branch
-      def root
-        self.class.find(:first, :with_commits => true, :conditions => { :id => self.branch_id } )
-      end
-      
-      # is this the head commit?
-      def head?
-        is_head?
+      def in_commit?
+        !@commit_mutex.nil?
       end
       
       protected
-      
         def save_with_commit(*args)
-          @commit_parameters ||= args.extract_options!
-          trans_options = args.extract_options!
-          @save_without_commit = true if @commit_parameters.delete :without_commit
-          @branch = trans_options.delete(:branch)
-          @staged_commit_message = trans_options.delete(:commit_message)    # do this better
-          @staged_commit_tag = trans_options.delete(:tag)                   # *really* do this better...
-          save_without_commit
-        end
-
-        def save_with_commit!(*args)
-          @commit_parameters ||= args.extract_options!
-          trans_options = args.extract_options!
-          @save_without_commit = true if @commit_parameters.delete :without_commit
-          @branch = trans_options.delete(:branch)
-          @staged_commit_message = trans_options.delete(:commit_message)
-          @staged_commit_tag = trans_options.delete(:tag)
-          save_without_commit!
-        end
-      
-        def setup_source_object
-          self.object_hash = self.commit_hash
-          self.is_head = true unless self.branch_id
-          self.object_created_at = Time.now + 1.second
-          self.save :without_commit => true
+          @commit_params ||= args.extract_options!
+          @save_without_commit = @commit_params.delete(:without_commit)
+          save_without_commit(*args)
         end
         
-        def clone_associations(receiver)
-          self.associations(true).each do |key, object|
-            if object.is_a?(Array)
-              object.map { |o| n = o.clone; n.set_owner(receiver); n.save; n }
-            else
-              n = object.clone
-              n.set_owner(receiver)
-              n.save
-              n
-            end
+        def save_with_commit!(*args)
+          @commit_params ||= args.extract_options!
+          @save_without_commit = @commit_params.delete(:without_commit)
+          save_without_commit!(*args)
+        end
+        
+        def setup_commit
+          unless @commit_mutex
+            self.object_hash = self.commit_hash
+            self.commit_created_at = Time.now + 1.second
+          end
+          self.commit_tag ||= @commit_tag
+        end
+        
+        def clone_previous
+          unless @commit_mutex or @stepping_out_of_commit
+            @commit_object = self.to_commit
+            @commit_object = nil if self.commit_hash == @commit_object.commit_hash
+          end
+          @stepping_out_of_commit = false
+          self
+        end
+        
+        def clone_associations(object)
+          # there must be a better way to do all of this
+          self.class.associations.each do |assoc|
+              clones =  (@transitory_revision || self).send("#{assoc}").map { |a| n = a.clone; a.revert_columns(n); n }
+              self.send("#{assoc}").map(&:save)
+              object.send("#{assoc}=", clones)
+              if @transitory_revision # need to do this so as to not use the previous commit as a source, but the commit reverting to
+                assoc_id = "#{assoc.to_s.singularize}_ids"
+                original_ids, new_ids = self.send(assoc_id), object.send(assoc_id)
+                self.send("#{assoc_id}=", new_ids)
+                object.send("#{assoc_id}=", original_ids)
+              end
           end
         end
         
-        def prepare_to_commit
-          return if self[:object_hash] == self.commit_hash and !@branch
-          self.is_head = false
-          @commit_object = self.to_commit
+        def save_commit
+          if @commit_object
+            @commit_object.save
+            self.clone_associations(@commit_object)
+            @commit_object = nil
+          end
         end
         
         def to_commit
-          rev = self.clone
-          rev.branch_id ||= @branch ? self.id : self.branch_id || self.id
-          rev.source_hash = self.object_hash
-          rev.is_head = true
-
-          self.class.column_names.each do |col|
-            next if self.class.clone_column?(col)
-            val = self.send("#{col}_changed?") ? self.send("#{col}_was") : self.send(col)
-            self.send("#{col}=", val)
-          end
-
-          rev
-        end
-        
-        def commit
-          if @commit_object and !@save_without_commit
-            @commit_object.commit_message = @staged_commit_message
-            @commit_object.commit_tag = @staged_commit_tag
-            @commit_object.save
-            self.clone_associations(@commit_object)
-            self.reload_with(@commit_object)
-            @commit_object = nil
-            @save_without_commit = nil
-            @branch = nil
-            setup_source_object
+          returning(self.clone) do |obj|
+            self.revert_columns(obj)
+            self.source_hash = obj.commit_hash
+            obj.original_commit_id = self.id
+            self.class.ignored_columns.each { |i| obj.send("#{i}=", nil)}
           end
         end
         
-        def reload_with(object, options = {})
-          attributes = object.attributes
-          attributes.reject! { |k, v| self.class.skipped_revisionary_attributes.include?(k) } if options[:skip_protected]
-          @attributes.update(attributes)
-          @attributes_cache = {}
-          self
+        def commit_mutex(flag)
+          @commit_mutex = flag == :start ? true : false
         end
       
-    end
-    
-    def self.included(receiver)
-      receiver.send :include, Revisionary::Common
-      receiver.extend         ClassMethods
-      receiver.send :include, InstanceMethods
-      
-      class << receiver
-        alias_method_chain :find, :commits
-        alias_method_chain :with_scope, :commits
-        alias_method_chain :count, :commits
-      end
-      
-      receiver.instance_eval do
-        
-        alias_method_chain :save, :commit
-        alias_method_chain :save!, :commit
-        
-        acts_as_scoped_model :find => { :conditions => { :is_head => true } }
-                
-        after_create :setup_source_object
-        before_update :prepare_to_commit
-        after_update :commit
-        
-      end
     end
     
   end

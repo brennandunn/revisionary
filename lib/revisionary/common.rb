@@ -1,53 +1,73 @@
 module Revisionary
   module Common
     
+    def self.included(receiver)
+      receiver.extend         ClassMethods
+      receiver.send :include, InstanceMethods
+    end
+    
     module ClassMethods
       
-      def associations
-        [self.revisionary_options[:with] || []].flatten
+      # columns to be skipped when creating comparison hashes
+      def skipped_columns
+        arr  = %w(source_hash object_hash original_commit_id commit_created_at commit_message commit_tag created_at updated_at) + [self.primary_key]
+        arr += self.ignored_columns if self.included_modules.include?(Revisionary::Core)
+        arr
       end
       
-      def skipped_revisionary_attributes
-        %w(source_hash object_hash object_created_at branch_id is_head commit_message commit_tag) + [self.primary_key]
+      def ignored_columns
+        [self.revisionary_options[:ignore]].flatten.map(&:to_s)
+      end
+      
+      # returns an array of monitored associations
+      def associations
+        return [] unless self.included_modules.include?(Revisionary::Core)
+        [self.revisionary_options[:with]].flatten
+      end
+      
+      def clone_column?(col)
+        not self.skipped_columns.include?(col)
       end
       
     end
     
     module InstanceMethods
       
-      # Generates unique hash for object and monitored associations
-      def commit_hash
-        hash = self.attributes.reject { |k, v| self.class.skipped_revisionary_attributes.include?(k.to_s) }.values.join(':')
-        array = associations(true).inject([]) do |arr, (key, assoc)|
-          as = self.send(key)
-          if as.is_a?(Array)
-            as.map { |o| o.attributes.reject { |k, v| [:id, :page_id].include?(k.to_sym ) }.values.join(':') }.join(':')
-          else
-            # TODO
-          end
-        end
-        Digest::SHA1.hexdigest([hash, array].flatten.join(':'))
+      def cloneable_attributes
+        attributes.dup.reject { |k, v| !self.class.clone_column?(k.to_s) }
       end
       
-      # returns monitored associations
-      def associations(load = false)
-        return [] unless self.class.included_modules.include?(Revisionary::Core)
-        self.class.apply_revisionary_to_associations
-        assoc = self.class.associations
-        if load
-          assoc = assoc.inject({}) do |hsh, as|
-            hsh[as] = send(as.to_sym)
-            hsh
+      # generates a unique hash for object
+      def commit_hash(origin_class = nil)
+        @origin_class = origin_class
+        combined  = self.attributes.reject { |k, v| self.class.skipped_columns.push(self.get_origin_foreign_key).flatten.include?(k.to_s) }.values.join(':')
+        combined += self.class.associations.inject([]) do |arr, assoc_name|
+                      association = self.send(assoc_name)
+                      association.is_a?(Array) ? association.map { |a| a.commit_hash(self.class) } : association.commit_hash
+                    end.join(':')
+        #Digest::SHA1.hexdigest(combined)            
+      end
+      
+      # revert columns in object to previous state - requires Rails 2.1
+      def revert_columns(object)
+        self.class.column_names.each do |col|
+          next unless self.class.clone_column?(col)
+          value = self.send("#{col}_changed?") ? self.send("#{col}_was") : self.send(col)
+          object.send("#{col}=", value)
+        end
+      end
+      
+      protected
+      # this will not work with polymorphic associations
+        def get_origin_foreign_key
+          if @origin_class
+            return [@origin_class.revisionary_options[:polymorphic]].map { |p| [ "#{p}_type", "#{p}_id" ] }.flatten
+            foreign_key = self.class.reflect_on_all_associations.find { |a| a.klass == @origin_class }.options[:foreign_key].to_s
+            @foreign_key ||= foreign_key.blank? ? [@origin_class.name.downcase + '_id'] : [foreign_key]
           end
         end
-        assoc
-      end
       
     end
     
-    def self.included(receiver)
-      receiver.extend         ClassMethods
-      receiver.send :include, InstanceMethods
-    end
   end
 end

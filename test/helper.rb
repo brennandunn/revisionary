@@ -10,7 +10,12 @@ require File.join(File.dirname(__FILE__), '..', 'lib', 'revisionary')
 
 class Page < ActiveRecord::Base
   has_many :parts
-  is_revisionary :with => :parts
+  is_revisionary :with => :parts, :ignore => :live_hash
+  
+  def set_live!
+    update_attribute :live_hash, self.object_hash
+  end
+  
 end
 
 class Part < ActiveRecord::Base
@@ -24,14 +29,14 @@ def setup_db
     
     create_table :pages do |t|
       t.string        :name
+      t.string        :live_hash  # a way of having a 'live' commit as opposed to the standard head
       
       t.string        :object_hash
-      t.datetime      :object_created_at
+      t.datetime      :commit_created_at
       t.string        :source_hash
-      t.integer       :branch_id
+      t.integer       :original_commit_id
       t.string        :commit_message
       t.string        :commit_tag
-      t.boolean       :is_head
     end
     
     create_table :parts do |t|
